@@ -1,0 +1,73 @@
+# docker-compose.template.yml — template pour dev/prod (adapter les images/arch pour Raspberry Pi)
+version: '3.8'
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    restart: unless-stopped
+    volumes:
+      - ./data/mosquitto/config:/mosquitto/config
+      - ./data/mosquitto/data:/mosquitto/data
+      - ./data/mosquitto/log:/mosquitto/log
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt
+    restart: unless-stopped
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0 # adapter selon dongle
+    volumes:
+      - ./data/zigbee2mqtt:/app/data
+    environment:
+      - TZ=Europe/Paris
+    depends_on:
+      - mosquitto
+
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=pguser
+      - POSTGRES_PASSWORD=pgpass
+      - POSTGRES_DB=attendance
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - postgres
+
+  backend:
+    image: your-registry/attendance-backend:latest
+    build: ./backend
+    environment:
+      - DATABASE_URL=postgres://pguser:pgpass@postgres:5432/attendance
+      - MQTT_URL=tcp://mosquitto:1883
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - mosquitto
+
+  frontend:
+    image: your-registry/attendance-frontend:latest
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+# Notes:
+# - Pour Raspberry Pi, préférer des images multi-arch ou choisir tags armhf/arm64.
+# - Ajouter nginx / certbot pour TLS en production.
+# - Adapter volumes et permissions selon déploiement.
